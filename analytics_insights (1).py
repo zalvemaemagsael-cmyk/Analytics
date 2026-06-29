@@ -13,8 +13,6 @@ import streamlit as st
 import numpy as np
 import pickle
 import os
-import plotly.graph_objects as go
-import json
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -459,167 +457,118 @@ def delinquency_risk_by_dimension(dimension: str):
     return agg
 
 
-# ── Region VI Province GeoJSON (approximate polygons) ──────────────────────
-REGION_VI_GEOJSON = {
-    "type": "FeatureCollection",
-    "features": [
-        {
-            "type": "Feature",
-            "id": "Aklan",
-            "properties": {"name": "Aklan"},
-            "geometry": {
-                "type": "Polygon",
-                "coordinates": [[[122.05,11.50],[122.65,11.50],[122.75,11.80],[122.60,12.05],
-                                  [122.30,12.10],[122.05,11.95],[121.95,11.70],[122.05,11.50]]]
-            }
-        },
-        {
-            "type": "Feature",
-            "id": "Antique",
-            "properties": {"name": "Antique"},
-            "geometry": {
-                "type": "Polygon",
-                "coordinates": [[[121.85,10.30],[122.05,10.30],[122.15,10.65],[122.10,11.15],
-                                  [121.95,11.45],[121.70,11.35],[121.65,10.90],[121.75,10.50],[121.85,10.30]]]
-            }
-        },
-        {
-            "type": "Feature",
-            "id": "Capiz",
-            "properties": {"name": "Capiz"},
-            "geometry": {
-                "type": "Polygon",
-                "coordinates": [[[122.45,11.20],[122.95,11.25],[123.10,11.50],[122.90,11.80],
-                                  [122.60,11.80],[122.35,11.55],[122.30,11.35],[122.45,11.20]]]
-            }
-        },
-        {
-            "type": "Feature",
-            "id": "Guimaras",
-            "properties": {"name": "Guimaras"},
-            "geometry": {
-                "type": "Polygon",
-                "coordinates": [[[122.50,10.50],[122.75,10.45],[122.85,10.65],[122.70,10.85],
-                                  [122.50,10.85],[122.38,10.70],[122.50,10.50]]]
-            }
-        },
-        {
-            "type": "Feature",
-            "id": "Iloilo",
-            "properties": {"name": "Iloilo"},
-            "geometry": {
-                "type": "Polygon",
-                "coordinates": [[[122.05,10.60],[122.55,10.55],[122.80,10.80],[122.85,11.10],
-                                  [122.65,11.25],[122.25,11.25],[122.00,11.05],[121.90,10.80],[122.05,10.60]]]
-            }
-        },
-        {
-            "type": "Feature",
-            "id": "Negros",
-            "properties": {"name": "Negros"},
-            "geometry": {
-                "type": "Polygon",
-                "coordinates": [[[122.50,9.40],[123.10,9.40],[123.30,9.80],[123.20,10.30],
-                                  [122.90,10.60],[122.55,10.70],[122.35,10.40],[122.30,9.90],[122.50,9.40]]]
-            }
-        },
-    ]
+# ── SVG Choropleth — zero dependencies, pure HTML/SVG ──────────────────────
+# SVG path data for Region VI provinces (hand-crafted approximations in SVG coords,
+# viewBox="0 0 340 420" mapping lon 121.5–123.5 → x, lat 9.2–12.2 → y (inverted))
+# lon→x: (lon-121.5)/2*340   lat→y: (12.2-lat)/3*420
+
+_PROVINCE_PATHS = {
+    "Aklan":    "M121,0 L162,0 L168,42 L155,84 L130,88 L111,70 L105,35 Z",
+    "Antique":  "M60,147 L77,147 L84,98 L88,49 L81,7 L60,0 L49,35 L51,91 L60,147 Z",
+    "Capiz":    "M157,91 L225,98 L241,119 L228,154 L191,154 L168,133 L162,112 Z",
+    "Guimaras": "M170,224 L191,231 L197,210 L188,189 L170,182 L158,196 Z",
+    "Iloilo":   "M77,175 L162,182 L191,154 L197,119 L184,91 L130,88 L111,105 L91,140 Z",
+    "Negros":   "M162,280 L241,280 L263,238 L255,182 L228,154 L191,154 L170,196 L163,252 Z",
 }
 
-PROVINCE_CENTERS = {
-    "Aklan":    (11.78, 122.37),
-    "Antique":  (10.88, 121.95),
-    "Capiz":    (11.45, 122.72),
-    "Guimaras": (10.65, 122.62),
-    "Iloilo":   (10.90, 122.45),
-    "Negros":   (10.00, 122.90),
+# Label positions (cx, cy) in same SVG coord space
+_PROVINCE_LABELS = {
+    "Aklan":    (136, 44),
+    "Antique":  (68,  84),
+    "Capiz":    (200, 126),
+    "Guimaras": (179, 210),
+    "Iloilo":   (150, 145),
+    "Negros":   (213, 224),
 }
 
-def build_choropleth(metric: str = "accomplishment", title: str = "Province Map"):
-    """
-    Build a Plotly choropleth for Region VI provinces.
-    metric: 'accomplishment' | 'risk'
-    """
+def _pct_to_color(pct: int, metric: str) -> str:
+    """Return a hex fill color from green→yellow→red (accomplishment) or reverse (risk)."""
+    t = pct / 100.0
+    if metric == "accomplishment":
+        # low pct → red, high pct → green
+        if t < 0.5:
+            r = 239; g = int(68 + (214-68)*t*2);  b = 68
+        else:
+            r = int(239 + (34-239)*(t-0.5)*2); g = int(214 + (197-214)*(t-0.5)*2); b = int(68 + (94-68)*(t-0.5)*2)
+    else:
+        # low pct → green, high pct → red (risk)
+        if t < 0.5:
+            r = int(34 + (239-34)*t*2); g = int(197 + (214-197)*t*2); b = int(94 + (68-94)*t*2)
+        else:
+            r = 239; g = int(214 + (68-214)*(t-0.5)*2); b = 68
+    return f"#{max(0,min(255,r)):02x}{max(0,min(255,g)):02x}{max(0,min(255,b)):02x}"
+
+def build_choropleth_svg(metric: str = "accomplishment", title: str = "Province Map") -> str:
+    """Return an HTML string containing an inline SVG choropleth map."""
     ia_agg   = insights_by_dimension("Province")
     risk_agg = delinquency_risk_by_dimension("Province")
 
-    provinces = list(PROVINCE_CENTERS.keys())
-    values, hover_texts, colors = [], [], []
-
-    if metric == "accomplishment":
-        colorscale = [[0,"#fee2e2"],[0.5,"#fef9c3"],[1,"#dcfce7"]]
-        colorbar_title = "Accomplishment %"
-        for p in provinces:
-            counts = ia_agg.get(p, {"acc":0,"total":1})
+    province_data = {}
+    for p in _PROVINCE_PATHS:
+        if metric == "accomplishment":
+            counts = ia_agg.get(p, {"acc": 0, "total": 1})
             total  = counts["total"] or 1
             pct    = round(counts["acc"] / total * 100)
-            values.append(pct)
-            hover_texts.append(
-                f"<b>{p}</b><br>Accomplished: {counts['acc']}/{total} ({pct}%)"
-            )
-    else:  # risk
-        colorscale = [[0,"#dcfce7"],[0.5,"#fef9c3"],[1,"#fee2e2"]]
-        colorbar_title = "At-Risk %"
-        for p in provinces:
-            counts = risk_agg.get(p, {"high_risk":0,"total":1})
+            detail = f"{counts['acc']}/{total} outputs accomplished"
+        else:
+            counts = risk_agg.get(p, {"high_risk": 0, "total": 1})
             total  = counts["total"] or 1
             pct    = round(counts["high_risk"] / total * 100)
-            values.append(pct)
-            hover_texts.append(
-                f"<b>{p}</b><br>At-Risk: {counts['high_risk']}/{total} ({pct}%)"
-            )
+            detail = f"{counts['high_risk']}/{total} flagged at-risk"
+        province_data[p] = {"pct": pct, "detail": detail, "color": _pct_to_color(pct, metric)}
 
-    fig = go.Figure(go.Choropleth(
-        geojson=REGION_VI_GEOJSON,
-        locations=provinces,
-        z=values,
-        text=hover_texts,
-        hoverinfo="text",
-        colorscale=colorscale,
-        zmin=0, zmax=100,
-        marker_line_color="#ffffff",
-        marker_line_width=1.5,
-        colorbar=dict(
-            title=dict(text=colorbar_title, font=dict(size=11, color="#6b7280")),
-            thickness=12,
-            len=0.6,
-            tickfont=dict(size=10, color="#6b7280"),
-            ticksuffix="%",
-        ),
-        featureidkey="id",
-    ))
-
-    # Province name annotations
-    for p, (lat, lon) in PROVINCE_CENTERS.items():
-        idx = provinces.index(p)
-        fig.add_scattergeo(
-            lat=[lat], lon=[lon],
-            text=[f"<b>{p}</b><br>{values[idx]}%"],
-            mode="text",
-            textfont=dict(size=10, color="#1a1a1a"),
-            showlegend=False,
-            hoverinfo="skip",
+    # Build SVG shapes
+    shapes_html = ""
+    labels_html = ""
+    for p, path_d in _PROVINCE_PATHS.items():
+        d    = province_data[p]
+        cx, cy = _PROVINCE_LABELS[p]
+        tip  = f"{p}: {d['pct']}% — {d['detail']}"
+        shapes_html += (
+            f'<path d="{path_d}" fill="{d["color"]}" stroke="#fff" stroke-width="2" opacity="0.92">'
+            f'<title>{tip}</title></path>\n'
+        )
+        labels_html += (
+            f'<text x="{cx}" y="{cy-6}" text-anchor="middle" font-size="9" font-weight="700" '
+            f'fill="#1a1a1a" font-family="Inter,sans-serif">{p}</text>\n'
+            f'<text x="{cx}" y="{cy+7}" text-anchor="middle" font-size="9" '
+            f'fill="#374151" font-family="Inter,sans-serif">{d["pct"]}%</text>\n'
         )
 
-    fig.update_geos(
-        visible=False,
-        fitbounds="locations",
-        resolution=50,
-        bgcolor="rgba(0,0,0,0)",
-        landcolor="#f9fafb",
-        oceancolor="#e0f2fe",
-        lakecolor="#e0f2fe",
-        showocean=True,
-        showlakes=True,
-    )
-    fig.update_layout(
-        title=dict(text=title, font=dict(size=13, color="#111", family="Inter"), x=0, xref="paper"),
-        margin=dict(l=0, r=0, t=36, b=0),
-        height=320,
-        paper_bgcolor="rgba(0,0,0,0)",
-        geo=dict(bgcolor="rgba(0,0,0,0)"),
-    )
-    return fig
+    # Colour-scale legend bar (0% → 100%)
+    if metric == "accomplishment":
+        grad_stops = 'stop-color:#ef4444" offset="0%"/><stop stop-color="#fef9c3" offset="50%"/><stop stop-color="#22c55e'
+        lo_label, hi_label = "0%", "100%"
+    else:
+        grad_stops = 'stop-color:#22c55e" offset="0%"/><stop stop-color="#fef9c3" offset="50%"/><stop stop-color:#ef4444'
+        # fix quoting
+        grad_stops = 'stop-color:#22c55e" offset="0%"/><stop stop-color="#fef9c3" offset="50%"/><stop stop-color="#ef4444'
+        lo_label, hi_label = "0%", "100%"
+
+    legend_svg = f"""
+    <defs>
+      <linearGradient id="lg_{metric}" x1="0" y1="0" x2="1" y2="0">
+        <stop {grad_stops}" offset="100%"/>
+      </linearGradient>
+    </defs>
+    <rect x="5" y="385" width="120" height="10" rx="4"
+          fill="url(#lg_{metric})" stroke="#e5e7eb" stroke-width="0.5"/>
+    <text x="5"   y="408" font-size="8" fill="#9ca3af" font-family="Inter,sans-serif">{lo_label}</text>
+    <text x="125" y="408" font-size="8" fill="#9ca3af" font-family="Inter,sans-serif" text-anchor="end">{hi_label}</text>
+    """
+
+    return f"""
+<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;">
+  <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:10px;">{title}</div>
+  <svg viewBox="0 0 340 415" xmlns="http://www.w3.org/2000/svg"
+       style="width:100%;max-height:340px;display:block;">
+    <!-- sea background -->
+    <rect width="340" height="415" fill="#e0f2fe" rx="8"/>
+    {shapes_html}
+    {labels_html}
+    {legend_svg}
+  </svg>
+</div>"""
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -772,15 +721,9 @@ if tab == "Program Overview":
 
     map_c1, map_c2 = st.columns(2)
     with map_c1:
-        st.plotly_chart(
-            build_choropleth("accomplishment", "IA Accomplishment Rate by Province"),
-            use_container_width=True, config={"displayModeBar": False}
-        )
+        st.markdown(build_choropleth_svg("accomplishment", "IA Accomplishment Rate by Province"), unsafe_allow_html=True)
     with map_c2:
-        st.plotly_chart(
-            build_choropleth("risk", "At-Risk Applicants by Province"),
-            use_container_width=True, config={"displayModeBar": False}
-        )
+        st.markdown(build_choropleth_svg("risk", "At-Risk Applicants by Province"), unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1174,15 +1117,9 @@ elif tab == "Program Insights":
         st.markdown('<div style="font-size:12px;color:#6b7280;margin-bottom:14px;">Color intensity shows accomplishment rate (left) and at-risk proportion (right) per province.</div>', unsafe_allow_html=True)
         pi_c1, pi_c2 = st.columns(2)
         with pi_c1:
-            st.plotly_chart(
-                build_choropleth("accomplishment", "IA Accomplishment Rate"),
-                use_container_width=True, config={"displayModeBar": False}
-            )
+            st.markdown(build_choropleth_svg("accomplishment", "IA Accomplishment Rate"), unsafe_allow_html=True)
         with pi_c2:
-            st.plotly_chart(
-                build_choropleth("risk", "At-Risk Applicant Rate"),
-                use_container_width=True, config={"displayModeBar": False}
-            )
+            st.markdown(build_choropleth_svg("risk", "At-Risk Applicant Rate"), unsafe_allow_html=True)
     else:
         st.markdown('<div style="margin-top:12px;padding:12px 16px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;font-size:12px;color:#0c4a6e;">💡 Switch the <strong>Analyze by</strong> selector to <strong>Province</strong> to view the geographic choropleth maps.</div>', unsafe_allow_html=True)
 
