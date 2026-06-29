@@ -284,8 +284,8 @@ MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logisticr
 
 @st.cache_resource
 def load_model():
-    import joblib
-    return joblib.load(MODEL_PATH)
+    with open(MODEL_PATH, "rb") as f:
+        return pickle.load(f)
 
 try:
     skl_model = load_model()
@@ -293,16 +293,7 @@ try:
 except Exception as _model_err:
     skl_model = None
     model_ok  = False
-    _raw_err  = str(_model_err)
-    # Surface a cleaner message for missing Orange dependency
-    if "Orange" in _raw_err or "orange" in _raw_err.lower():
-        _model_err_msg = (
-            "The saved model requires the **Orange** package which is not installed. "
-            "Re-export the model as a plain sklearn pickle (`joblib.dump(model.skl_model, ...)`) "
-            "and replace `logisticregression.pkcls`."
-        )
-    else:
-        _model_err_msg = _raw_err
+    _model_err_msg = str(_model_err)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
