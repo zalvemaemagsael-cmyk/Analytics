@@ -285,8 +285,11 @@ MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logisticr
 @st.cache_resource
 def load_model():
     with open(MODEL_PATH, "rb") as f:
-        orange_model = pickle.load(f)
-    return orange_model.skl_model
+        obj = pickle.load(f)
+    # Support both Orange-wrapped and plain sklearn models
+    if hasattr(obj, "skl_model"):
+        return obj.skl_model
+    return obj  # already a sklearn model
 
 try:
     skl_model = load_model()
@@ -294,7 +297,16 @@ try:
 except Exception as _model_err:
     skl_model = None
     model_ok  = False
-    _model_err_msg = str(_model_err)
+    _raw_err  = str(_model_err)
+    # Surface a cleaner message for missing Orange dependency
+    if "Orange" in _raw_err or "orange" in _raw_err.lower():
+        _model_err_msg = (
+            "The saved model requires the **Orange** package which is not installed. "
+            "Re-export the model as a plain sklearn pickle (`joblib.dump(model.skl_model, ...)`) "
+            "and replace `logisticregression.pkcls`."
+        )
+    else:
+        _model_err_msg = _raw_err
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -581,10 +593,6 @@ st.markdown("""
 if "active_tab" not in st.session_state:
     st.session_state.active_tab = "Program Overview"
 
-# Tab state
-if "active_tab" not in st.session_state:
-    st.session_state.active_tab = "Program Overview"
-
 TABS = [
     "Program Overview",
     "Impact Assessment",
@@ -592,85 +600,74 @@ TABS = [
     "Program Insights",
 ]
 
-# ── Render nav bar as real Streamlit buttons styled to look like tabs ──────
+# ── Nav bar using st.radio hidden and replaced by custom HTML ───────────────
 st.markdown("""
 <style>
-  /* Container: white bar with bottom border, flush to edges */
-  div[data-testid="stHorizontalBlock"].nav-row {
+  /* Hide the radio widget visually but keep it functional */
+  div[data-testid="stRadio"] {
     background: #fff;
     border-bottom: 1px solid #e5e7eb;
     padding: 0 28px;
-    gap: 0 !important;
     margin: 0 !important;
   }
-  /* Each column in nav row: no padding */
-  div[data-testid="stHorizontalBlock"].nav-row > div[data-testid="stColumn"] {
-    padding: 0 !important;
-    flex: 0 0 auto !important;
-    width: auto !important;
-    min-width: 0 !important;
+  div[data-testid="stRadio"] > label { display: none !important; }
+  div[data-testid="stRadio"] > div[role="radiogroup"] {
+    display: flex !important;
+    flex-direction: row !important;
+    gap: 0 !important;
+    flex-wrap: nowrap !important;
   }
-  /* The buttons themselves */
-  div[data-testid="stHorizontalBlock"].nav-row button {
-    background: none !important;
-    border: none !important;
-    border-bottom: 2px solid transparent !important;
-    border-radius: 0 !important;
+  div[data-testid="stRadio"] > div[role="radiogroup"] > label {
+    display: flex !important;
+    align-items: center !important;
     padding: 13px 18px 11px 18px !important;
     font-size: 13px !important;
     font-weight: 500 !important;
     color: #6b7280 !important;
+    border-bottom: 2px solid transparent !important;
     cursor: pointer !important;
     white-space: nowrap !important;
-    box-shadow: none !important;
-    height: auto !important;
-    line-height: 1 !important;
-    transition: color .15s !important;
-    width: auto !important;
-  }
-  div[data-testid="stHorizontalBlock"].nav-row button:hover {
-    color: #1d4ed8 !important;
     background: none !important;
-    border-bottom: 2px solid #e5e7eb !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    transition: color .15s !important;
   }
-  div[data-testid="stHorizontalBlock"].nav-row button.active-tab {
+  div[data-testid="stRadio"] > div[role="radiogroup"] > label:hover {
+    color: #1d4ed8 !important;
+  }
+  /* Hide the radio circle */
+  div[data-testid="stRadio"] > div[role="radiogroup"] > label > div:first-child {
+    display: none !important;
+  }
+  /* Style the text span */
+  div[data-testid="stRadio"] > div[role="radiogroup"] > label > div:last-child {
+    font-size: 13px !important;
+    font-weight: 500 !important;
+  }
+  /* Active (checked) tab */
+  div[data-testid="stRadio"] > div[role="radiogroup"] > label[data-baseweb="radio"]:has(input:checked),
+  div[data-testid="stRadio"] > div[role="radiogroup"] > label:has(input:checked) {
     color: #1d4ed8 !important;
     border-bottom: 2px solid #1d4ed8 !important;
     font-weight: 600 !important;
   }
-  /* Remove the spacer column Streamlit adds */
-  div[data-testid="stHorizontalBlock"].nav-row > div:last-child:not([data-testid="stColumn"]) {
-    display: none !important;
+  div[data-testid="stRadio"] > div[role="radiogroup"] > label:has(input:checked) > div:last-child {
+    color: #1d4ed8 !important;
+    font-weight: 600 !important;
   }
 </style>
 """, unsafe_allow_html=True)
 
-# Inject a class onto the next stHorizontalBlock via a marker
-st.markdown('<div id="nav-marker"></div>', unsafe_allow_html=True)
-st.markdown("""
-<script>
-  (function() {
-    const marker = document.getElementById('nav-marker');
-    if (marker) {
-      const block = marker.nextElementSibling;
-      if (block) block.classList.add('nav-row');
-      // Mark active button
-      const active = """ + f'"{st.session_state.active_tab}"' + """;
-      const btns = block ? block.querySelectorAll('button') : [];
-      btns.forEach(b => { if (b.innerText.trim() === active) b.classList.add('active-tab'); });
-    }
-  })();
-</script>
-""", unsafe_allow_html=True)
+tab = st.radio(
+    "nav",
+    TABS,
+    index=TABS.index(st.session_state.active_tab),
+    horizontal=True,
+    label_visibility="collapsed",
+    key="nav_radio",
+)
+st.session_state.active_tab = tab
 
-nav_cols = st.columns(len(TABS) + 1)  # +1 for spacer
-for i, label in enumerate(TABS):
-    with nav_cols[i]:
-        if st.button(label, key=f"tab_{i}", use_container_width=False):
-            st.session_state.active_tab = label
-            st.rerun()
-
-tab = st.session_state.active_tab
 st.markdown('<div class="content">', unsafe_allow_html=True)
 
 
