@@ -10,6 +10,7 @@ Tabs:
 """
 
 import streamlit as st
+import streamlit.components.v1 as components
 import numpy as np
 import pickle
 import os
@@ -498,8 +499,8 @@ def _pct_to_color(pct: int, metric: str) -> str:
             r = 239; g = int(214 + (68-214)*(t-0.5)*2); b = 68
     return f"#{max(0,min(255,r)):02x}{max(0,min(255,g)):02x}{max(0,min(255,b)):02x}"
 
-def build_choropleth_svg(metric: str = "accomplishment", title: str = "Province Map") -> str:
-    """Return an HTML string containing an inline SVG choropleth map."""
+def build_choropleth_html(metric: str = "accomplishment", title: str = "Province Map") -> str:
+    """Return a full standalone HTML page with an SVG choropleth — for use with components.html()."""
     ia_agg   = insights_by_dimension("Province")
     risk_agg = delinquency_risk_by_dimension("Province")
 
@@ -517,58 +518,60 @@ def build_choropleth_svg(metric: str = "accomplishment", title: str = "Province 
             detail = f"{counts['high_risk']}/{total} flagged at-risk"
         province_data[p] = {"pct": pct, "detail": detail, "color": _pct_to_color(pct, metric)}
 
-    # Build SVG shapes
     shapes_html = ""
     labels_html = ""
     for p, path_d in _PROVINCE_PATHS.items():
-        d    = province_data[p]
+        d = province_data[p]
         cx, cy = _PROVINCE_LABELS[p]
-        tip  = f"{p}: {d['pct']}% — {d['detail']}"
+        tip = f"{p}: {d['pct']}% \u2014 {d['detail']}"
         shapes_html += (
             f'<path d="{path_d}" fill="{d["color"]}" stroke="#fff" stroke-width="2" opacity="0.92">'
             f'<title>{tip}</title></path>\n'
         )
         labels_html += (
-            f'<text x="{cx}" y="{cy-6}" text-anchor="middle" font-size="9" font-weight="700" '
-            f'fill="#1a1a1a" font-family="Inter,sans-serif">{p}</text>\n'
-            f'<text x="{cx}" y="{cy+7}" text-anchor="middle" font-size="9" '
+            f'<text x="{cx}" y="{cy - 6}" text-anchor="middle" font-size="10" font-weight="700" '
+            f'fill="#111" font-family="Inter,sans-serif">{p}</text>\n'
+            f'<text x="{cx}" y="{cy + 8}" text-anchor="middle" font-size="10" '
             f'fill="#374151" font-family="Inter,sans-serif">{d["pct"]}%</text>\n'
         )
 
-    # Colour-scale legend bar (0% → 100%)
     if metric == "accomplishment":
-        grad_stops = 'stop-color:#ef4444" offset="0%"/><stop stop-color="#fef9c3" offset="50%"/><stop stop-color="#22c55e'
-        lo_label, hi_label = "0%", "100%"
+        c0, c1, c2 = "#ef4444", "#fef9c3", "#22c55e"
+        lo_lbl, hi_lbl = "Low (0%)", "High (100%)"
     else:
-        grad_stops = 'stop-color:#22c55e" offset="0%"/><stop stop-color="#fef9c3" offset="50%"/><stop stop-color:#ef4444'
-        # fix quoting
-        grad_stops = 'stop-color:#22c55e" offset="0%"/><stop stop-color="#fef9c3" offset="50%"/><stop stop-color="#ef4444'
-        lo_label, hi_label = "0%", "100%"
+        c0, c1, c2 = "#22c55e", "#fef9c3", "#ef4444"
+        lo_lbl, hi_lbl = "Low (0%)", "High (100%)"
 
-    legend_svg = f"""
-    <defs>
-      <linearGradient id="lg_{metric}" x1="0" y1="0" x2="1" y2="0">
-        <stop {grad_stops}" offset="100%"/>
-      </linearGradient>
-    </defs>
-    <rect x="5" y="385" width="120" height="10" rx="4"
-          fill="url(#lg_{metric})" stroke="#e5e7eb" stroke-width="0.5"/>
-    <text x="5"   y="408" font-size="8" fill="#9ca3af" font-family="Inter,sans-serif">{lo_label}</text>
-    <text x="125" y="408" font-size="8" fill="#9ca3af" font-family="Inter,sans-serif" text-anchor="end">{hi_label}</text>
-    """
-
-    return f"""
-<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;">
-  <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:10px;">{title}</div>
-  <svg viewBox="0 0 340 415" xmlns="http://www.w3.org/2000/svg"
-       style="width:100%;max-height:340px;display:block;">
-    <!-- sea background -->
-    <rect width="340" height="415" fill="#e0f2fe" rx="8"/>
-    {shapes_html}
-    {labels_html}
-    {legend_svg}
-  </svg>
-</div>"""
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * {{ margin:0; padding:0; box-sizing:border-box; }}
+  body {{ background:#fff; font-family:Inter,sans-serif; padding:14px 16px; }}
+  .map-title {{ font-size:12px; font-weight:700; color:#374151; margin-bottom:10px; }}
+  .legend {{ display:flex; align-items:center; gap:8px; margin-top:10px; }}
+  .legend-bar {{ flex:1; height:10px; border-radius:4px;
+    background: linear-gradient(to right, {c0}, {c1}, {c2});
+    border:1px solid #e5e7eb; }}
+  .legend-lbl {{ font-size:10px; color:#9ca3af; white-space:nowrap; }}
+</style>
+</head>
+<body>
+<div class="map-title">{title}</div>
+<svg viewBox="0 0 290 310" xmlns="http://www.w3.org/2000/svg"
+     style="width:100%;display:block;border-radius:8px;overflow:hidden;">
+  <rect width="290" height="310" fill="#dbeafe"/>
+  {shapes_html}
+  {labels_html}
+</svg>
+<div class="legend">
+  <span class="legend-lbl">{lo_lbl}</span>
+  <div class="legend-bar"></div>
+  <span class="legend-lbl">{hi_lbl}</span>
+</div>
+</body>
+</html>"""
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -668,29 +671,38 @@ if tab == "Program Overview":
     st.markdown('<div class="sec-head">MSME Status — Latest Semester</div>', unsafe_allow_html=True)
     rows = per_msme_latest_overall()
 
-    table_html = """
-    <table class="msme-table">
-      <thead>
-        <tr>
-          <th>MSME Name</th>
-          <th>Address</th>
-          <th>Latest Semester</th>
-          <th>Overall Verdict</th>
-        </tr>
-      </thead>
-      <tbody>
-    """
+    table_rows = ""
     for name, sem, overall, addr in rows:
         cls, lbl = verdict_badge_cls(overall)
-        table_html += f"""
+        badge_styles = {
+            "badge-accomplished":     "background:#dcfce7;color:#15803d",
+            "badge-partial":          "background:#fef9c3;color:#a16207",
+            "badge-not-accomplished": "background:#fee2e2;color:#b91c1c",
+        }
+        badge_style = badge_styles.get(cls, "background:#f3f4f6;color:#374151")
+        table_rows += f"""
         <tr>
           <td><strong>{name}</strong></td>
           <td style="color:#9ca3af;font-size:12px;">{addr}</td>
           <td style="font-size:12px;">{sem}</td>
-          <td><span class="{cls}">{lbl}</span></td>
+          <td><span style="font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;{badge_style}">{lbl}</span></td>
         </tr>"""
-    table_html += "</tbody></table>"
-    st.markdown(table_html, unsafe_allow_html=True)
+
+    table_html = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>
+  body {{ margin:0; padding:0; font-family:Inter,sans-serif; }}
+  table {{ width:100%; border-collapse:collapse; font-size:13px; }}
+  th {{ text-align:left; font-size:11px; font-weight:700; color:#6b7280;
+        text-transform:uppercase; letter-spacing:.06em;
+        border-bottom:2px solid #e5e7eb; padding:8px 12px; }}
+  td {{ padding:10px 12px; border-bottom:1px solid #f3f4f6; color:#374151; }}
+  tr:hover td {{ background:#f9fafb; }}
+</style></head><body>
+<table><thead><tr>
+  <th>MSME Name</th><th>Address</th><th>Latest Semester</th><th>Overall Verdict</th>
+</tr></thead><tbody>{table_rows}</tbody></table>
+</body></html>"""
+    components.html(table_html, height=min(60 + len(rows) * 44, 500), scrolling=True)
 
     st.markdown('<div class="sec-head" style="margin-top:28px;">Delinquency Risk Pool</div>', unsafe_allow_html=True)
     risk_cols = st.columns(4)
@@ -721,9 +733,9 @@ if tab == "Program Overview":
 
     map_c1, map_c2 = st.columns(2)
     with map_c1:
-        st.markdown(build_choropleth_svg("accomplishment", "IA Accomplishment Rate by Province"), unsafe_allow_html=True)
+        components.html(build_choropleth_html("accomplishment", "IA Accomplishment Rate by Province"), height=370)
     with map_c2:
-        st.markdown(build_choropleth_svg("risk", "At-Risk Applicants by Province"), unsafe_allow_html=True)
+        components.html(build_choropleth_html("risk", "At-Risk Applicants by Province"), height=370)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1117,9 +1129,9 @@ elif tab == "Program Insights":
         st.markdown('<div style="font-size:12px;color:#6b7280;margin-bottom:14px;">Color intensity shows accomplishment rate (left) and at-risk proportion (right) per province.</div>', unsafe_allow_html=True)
         pi_c1, pi_c2 = st.columns(2)
         with pi_c1:
-            st.markdown(build_choropleth_svg("accomplishment", "IA Accomplishment Rate"), unsafe_allow_html=True)
+            components.html(build_choropleth_html("accomplishment", "IA Accomplishment Rate"), height=370)
         with pi_c2:
-            st.markdown(build_choropleth_svg("risk", "At-Risk Applicant Rate"), unsafe_allow_html=True)
+            components.html(build_choropleth_html("risk", "At-Risk Applicant Rate"), height=370)
     else:
         st.markdown('<div style="margin-top:12px;padding:12px 16px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;font-size:12px;color:#0c4a6e;">💡 Switch the <strong>Analyze by</strong> selector to <strong>Province</strong> to view the geographic choropleth maps.</div>', unsafe_allow_html=True)
 
