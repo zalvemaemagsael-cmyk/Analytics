@@ -280,16 +280,12 @@ SECTORS    = [
 OWNERSHIPS = ["Cooperative","Corporation","Partnership","Single"]
 SIZES      = ["micro","small","medium"]
 
-MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logisticregression.pkcls")
+MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logisticregression.pkl")
 
 @st.cache_resource
 def load_model():
-    with open(MODEL_PATH, "rb") as f:
-        obj = pickle.load(f)
-    # Support both Orange-wrapped and plain sklearn models
-    if hasattr(obj, "skl_model"):
-        return obj.skl_model
-    return obj  # already a sklearn model
+    import joblib
+    return joblib.load(MODEL_PATH)
 
 try:
     skl_model = load_model()
