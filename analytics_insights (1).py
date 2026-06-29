@@ -287,6 +287,18 @@ def load_model():
     with open(MODEL_PATH, "rb") as f:
         return pickle.load(f)
 
+def model_predict(model_data, X):
+    """Pure numpy logistic regression inference — no sklearn needed."""
+    import math
+    coef = model_data["coef_"]
+    intercept = model_data["intercept_"]
+    row = X[0]
+    logit = intercept + sum(c * x for c, x in zip(coef, row))
+    p1 = 1.0 / (1.0 + math.exp(-logit))   # probability of class 1 (delinquent)
+    p0 = 1.0 - p1                           # probability of class 0 (completed)
+    pred_class = model_data["classes_"][1] if p1 >= 0.5 else model_data["classes_"][0]
+    return pred_class, [p0, p1]
+
 try:
     skl_model = load_model()
     model_ok  = True
@@ -990,8 +1002,7 @@ elif tab == "Delinquency Risk":
     if st.button("Assess delinquency risk", use_container_width=True, type="primary"):
         X = build_feature_vector(year, cost_raw, province, sector, ownership, size, prior_funding)
         try:
-            pred_class      = skl_model.predict(X)[0]
-            proba           = skl_model.predict_proba(X)[0]
+            pred_class, proba   = model_predict(skl_model, X)
             p_completed     = float(proba[0])
             p_not_completed = float(proba[1])
             delinquency_pct = round(p_not_completed * 100)
