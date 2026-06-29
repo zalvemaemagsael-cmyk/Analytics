@@ -459,27 +459,30 @@ def delinquency_risk_by_dimension(dimension: str):
 
 
 # ── SVG Choropleth — zero dependencies, pure HTML/SVG ──────────────────────
-# SVG path data for Region VI provinces (hand-crafted approximations in SVG coords,
-# viewBox="0 0 340 420" mapping lon 121.5–123.5 → x, lat 9.2–12.2 → y (inverted))
-# lon→x: (lon-121.5)/2*340   lat→y: (12.2-lat)/3*420
-
+# Coordinate system: viewBox "0 0 300 420"
+# Provinces laid out to match approximate geographic positions of Region VI
 _PROVINCE_PATHS = {
-    "Aklan":    "M121,0 L162,0 L168,42 L155,84 L130,88 L111,70 L105,35 Z",
-    "Antique":  "M60,147 L77,147 L84,98 L88,49 L81,7 L60,0 L49,35 L51,91 L60,147 Z",
-    "Capiz":    "M157,91 L225,98 L241,119 L228,154 L191,154 L168,133 L162,112 Z",
-    "Guimaras": "M170,224 L191,231 L197,210 L188,189 L170,182 L158,196 Z",
-    "Iloilo":   "M77,175 L162,182 L191,154 L197,119 L184,91 L130,88 L111,105 L91,140 Z",
-    "Negros":   "M162,280 L241,280 L263,238 L255,182 L228,154 L191,154 L170,196 L163,252 Z",
+    # North: Aklan (top-right), top area
+    "Aklan":    "M155,10 L195,12 L202,50 L188,88 L162,92 L142,74 L136,42 Z",
+    # West coast: Antique (tall narrow strip on left)
+    "Antique":  "M55,108 L78,106 L86,68 L90,30 L80,10 L58,8 L44,40 L46,78 Z",
+    # North-east: Capiz
+    "Capiz":    "M168,94 L232,100 L248,122 L234,158 L196,158 L172,136 L165,114 Z",
+    # Small island: Guimaras
+    "Guimaras": "M172,238 L194,244 L200,222 L190,200 L170,194 L158,208 Z",
+    # Central: Iloilo
+    "Iloilo":   "M82,132 L170,138 L196,158 L202,126 L188,96 L162,92 L118,108 L96,126 Z",
+    # South: Negros Occidental (largest, bottom)
+    "Negros":   "M166,290 L248,290 L268,248 L260,190 L234,158 L196,158 L172,202 L165,260 Z",
 }
 
-# Label positions (cx, cy) in same SVG coord space
 _PROVINCE_LABELS = {
-    "Aklan":    (136, 44),
-    "Antique":  (68,  84),
-    "Capiz":    (200, 126),
-    "Guimaras": (179, 210),
-    "Iloilo":   (150, 145),
-    "Negros":   (213, 224),
+    "Aklan":    (170, 52),
+    "Antique":  (67,  58),
+    "Capiz":    (207, 130),
+    "Guimaras": (180, 222),
+    "Iloilo":   (152, 148),
+    "Negros":   (217, 234),
 }
 
 def _pct_to_color(pct: int, metric: str) -> str:
@@ -559,9 +562,9 @@ def build_choropleth_html(metric: str = "accomplishment", title: str = "Province
 </head>
 <body>
 <div class="map-title">{title}</div>
-<svg viewBox="0 0 290 310" xmlns="http://www.w3.org/2000/svg"
+<svg viewBox="0 0 300 320" xmlns="http://www.w3.org/2000/svg"
      style="width:100%;display:block;border-radius:8px;overflow:hidden;">
-  <rect width="290" height="310" fill="#dbeafe"/>
+  <rect width="300" height="320" fill="#dbeafe"/>
   {shapes_html}
   {labels_html}
 </svg>
@@ -611,16 +614,38 @@ for label, _ in TABS:
 tab_html += "</div>"
 st.markdown(tab_html, unsafe_allow_html=True)
 
-# Streamlit tab buttons (invisible, positioned under nav)
+# Invisible Streamlit buttons overlapping the visual nav bar above
+st.markdown("""
+<style>
+  div[data-testid="stHorizontalBlock"]:has(button[kind="secondary"]) {
+    margin-top: -52px !important;
+    height: 52px !important;
+    overflow: hidden;
+    position: relative;
+    z-index: 200;
+  }
+  div[data-testid="stHorizontalBlock"]:has(button[kind="secondary"]) button {
+    opacity: 0 !important;
+    height: 52px !important;
+    min-height: 52px !important;
+    border: none !important;
+    background: transparent !important;
+    cursor: pointer !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  div[data-testid="stHorizontalBlock"]:has(button[kind="secondary"]) > div {
+    padding: 0 !important;
+  }
+</style>
+""", unsafe_allow_html=True)
+
 cols = st.columns(len(TABS))
 for i, (label, _) in enumerate(TABS):
     with cols[i]:
-        if st.button(label, key=f"navbtn_{i}", use_container_width=True,
-                     help=label):
+        if st.button(label, key=f"navbtn_{i}", use_container_width=True):
             st.session_state.active_tab = label
             st.rerun()
-
-st.markdown("<style>[data-testid='stHorizontalBlock'] button { opacity:0; height:2px; padding:0; margin:0; border:none; } </style>", unsafe_allow_html=True)
 
 tab = st.session_state.active_tab
 st.markdown('<div class="content">', unsafe_allow_html=True)
