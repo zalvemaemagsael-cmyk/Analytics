@@ -1,0 +1,5 @@
+streamlit>=1.35.0
+numpy>=1.26.0
+scikit-learn>=1.4.0
+orange3>=3.36.0
+plotly>=5.0
