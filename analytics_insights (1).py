@@ -53,26 +53,7 @@ st.markdown("""
     background: #fff;
   }
 
-  /* ── Nav tabs ── */
-  .navtabs {
-    display: flex; align-items: flex-end; gap: 0;
-    background: #fff; border-bottom: 1px solid #e5e7eb;
-    padding: 0 28px;
-  }
-  .navtab {
-    display: flex; align-items: center; gap: 7px;
-    padding: 13px 18px 11px 18px;
-    font-size: 13px; font-weight: 500; color: #6b7280;
-    border-bottom: 2px solid transparent;
-    cursor: pointer; white-space: nowrap; text-decoration: none;
-    transition: color .15s;
-    background: none; border-left: none; border-right: none; border-top: none;
-  }
-  .navtab:hover { color: #1d4ed8; }
-  .navtab.active {
-    color: #1d4ed8; border-bottom: 2px solid #1d4ed8; font-weight: 600;
-  }
-  .navtab svg { width: 15px; height: 15px; }
+  /* ── Nav tabs — handled by styled st.buttons below ── */
 
   /* ── Content area ── */
   .content { padding: 28px 32px 60px 32px; }
@@ -600,50 +581,92 @@ st.markdown("""
 if "active_tab" not in st.session_state:
     st.session_state.active_tab = "Program Overview"
 
+# Tab state
+if "active_tab" not in st.session_state:
+    st.session_state.active_tab = "Program Overview"
+
 TABS = [
-    ("Program Overview",          "M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"),
-    ("Impact Assessment",         "M3 3h18v18H3zM9 9h6M9 12h6M9 15h4"),
-    ("Delinquency Risk",          "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"),
-    ("Program Insights",          "M18 20V10M12 20V4M6 20v-6"),
+    "Program Overview",
+    "Impact Assessment",
+    "Delinquency Risk",
+    "Program Insights",
 ]
 
-tab_html = '<div class="navtabs">'
-for label, _ in TABS:
-    active_cls = "active" if st.session_state.active_tab == label else ""
-    tab_html += f'<span class="navtab {active_cls}" id="tab-{label.replace(" ","-")}">{label}</span>'
-tab_html += "</div>"
-st.markdown(tab_html, unsafe_allow_html=True)
-
-# Invisible Streamlit buttons overlapping the visual nav bar above
+# ── Render nav bar as real Streamlit buttons styled to look like tabs ──────
 st.markdown("""
 <style>
-  div[data-testid="stHorizontalBlock"]:has(button[kind="secondary"]) {
-    margin-top: -52px !important;
-    height: 52px !important;
-    overflow: hidden;
-    position: relative;
-    z-index: 200;
-  }
-  div[data-testid="stHorizontalBlock"]:has(button[kind="secondary"]) button {
-    opacity: 0 !important;
-    height: 52px !important;
-    min-height: 52px !important;
-    border: none !important;
-    background: transparent !important;
-    cursor: pointer !important;
-    padding: 0 !important;
+  /* Container: white bar with bottom border, flush to edges */
+  div[data-testid="stHorizontalBlock"].nav-row {
+    background: #fff;
+    border-bottom: 1px solid #e5e7eb;
+    padding: 0 28px;
+    gap: 0 !important;
     margin: 0 !important;
   }
-  div[data-testid="stHorizontalBlock"]:has(button[kind="secondary"]) > div {
+  /* Each column in nav row: no padding */
+  div[data-testid="stHorizontalBlock"].nav-row > div[data-testid="stColumn"] {
     padding: 0 !important;
+    flex: 0 0 auto !important;
+    width: auto !important;
+    min-width: 0 !important;
+  }
+  /* The buttons themselves */
+  div[data-testid="stHorizontalBlock"].nav-row button {
+    background: none !important;
+    border: none !important;
+    border-bottom: 2px solid transparent !important;
+    border-radius: 0 !important;
+    padding: 13px 18px 11px 18px !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    color: #6b7280 !important;
+    cursor: pointer !important;
+    white-space: nowrap !important;
+    box-shadow: none !important;
+    height: auto !important;
+    line-height: 1 !important;
+    transition: color .15s !important;
+    width: auto !important;
+  }
+  div[data-testid="stHorizontalBlock"].nav-row button:hover {
+    color: #1d4ed8 !important;
+    background: none !important;
+    border-bottom: 2px solid #e5e7eb !important;
+  }
+  div[data-testid="stHorizontalBlock"].nav-row button.active-tab {
+    color: #1d4ed8 !important;
+    border-bottom: 2px solid #1d4ed8 !important;
+    font-weight: 600 !important;
+  }
+  /* Remove the spacer column Streamlit adds */
+  div[data-testid="stHorizontalBlock"].nav-row > div:last-child:not([data-testid="stColumn"]) {
+    display: none !important;
   }
 </style>
 """, unsafe_allow_html=True)
 
-cols = st.columns(len(TABS))
-for i, (label, _) in enumerate(TABS):
-    with cols[i]:
-        if st.button(label, key=f"navbtn_{i}", use_container_width=True):
+# Inject a class onto the next stHorizontalBlock via a marker
+st.markdown('<div id="nav-marker"></div>', unsafe_allow_html=True)
+st.markdown("""
+<script>
+  (function() {
+    const marker = document.getElementById('nav-marker');
+    if (marker) {
+      const block = marker.nextElementSibling;
+      if (block) block.classList.add('nav-row');
+      // Mark active button
+      const active = """ + f'"{st.session_state.active_tab}"' + """;
+      const btns = block ? block.querySelectorAll('button') : [];
+      btns.forEach(b => { if (b.innerText.trim() === active) b.classList.add('active-tab'); });
+    }
+  })();
+</script>
+""", unsafe_allow_html=True)
+
+nav_cols = st.columns(len(TABS) + 1)  # +1 for spacer
+for i, label in enumerate(TABS):
+    with nav_cols[i]:
+        if st.button(label, key=f"tab_{i}", use_container_width=False):
             st.session_state.active_tab = label
             st.rerun()
 
